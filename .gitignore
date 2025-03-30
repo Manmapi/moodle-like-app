@@ -1,0 +1,14 @@
+.vscode
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+.qodo
+
+.DS_Store/*
+*.env
+.copier/*
+.github/*
+
+.idea/*
