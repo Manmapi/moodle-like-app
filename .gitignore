@@ -12,3 +12,4 @@ node_modules/
 .github/*
 
 .idea/*
+neo4j/*

@@ -7,10 +7,12 @@ from fastapi.security import OAuth2PasswordBearer
 from jwt.exceptions import InvalidTokenError
 from pydantic import ValidationError
 from sqlmodel import Session
+from neo4j import GraphDatabase, Session as Neo4jSession
 
 from app.core import security
 from app.core.config import settings
 from app.core.db import engine
+from app.core.neo4j import neo4j_conn
 from app.models.user import TokenPayload, User
 
 reusable_oauth2 = OAuth2PasswordBearer(
@@ -22,8 +24,14 @@ def get_db() -> Generator[Session, None, None]:
     with Session(engine) as session:
         yield session
 
+# Dependency to get a Neo4j session
+async def get_neo4j_db():
+    async with neo4j_conn.get_session() as session:
+        yield session
+
 
 SessionDep = Annotated[Session, Depends(get_db)]
+Neo4jSessionDep = Annotated[Neo4jSession, Depends(get_neo4j_db)]
 TokenDep = Annotated[str, Depends(reusable_oauth2)]
 
 
