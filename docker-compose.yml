@@ -134,9 +134,31 @@ services:
       - traefik.http.routers.${STACK_NAME?Variable not set}-backend-https.tls=true
       - traefik.http.routers.${STACK_NAME?Variable not set}-backend-https.tls.certresolver=le
       - traefik.http.routers.${STACK_NAME?Variable not set}-backend-http.middlewares=https-redirect
+  
+  influxdb:
+    image: influxdb:latest
+    restart: always
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=${INFLUXDB_USER?Variable not set}
+      - DOCKER_INFLUXDB_INIT_PASSWORD=${INFLUXDB_PASSWORD?Variable not set}
+      - DOCKER_INFLUXDB_INIT_ORG=${INFLUXDB_ORG?Variable not set}
+      - DOCKER_INFLUXDB_INIT_BUCKET=${INFLUXDB_BUCKET?Variable not set}
+      - DOCKER_INFLUXDB_INIT_RETENTION=1w
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=${INFLUXDB_TOKEN?Variable not set}
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - default
 
 volumes:
   app-db-data:
+  influxdb-data:
 
 networks:
   traefik-public:

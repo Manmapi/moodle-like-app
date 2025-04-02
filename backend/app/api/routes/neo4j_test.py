@@ -14,8 +14,8 @@ async def get_nodes(neo4j_session: Neo4jSessionDep):
 async def create_node(neo4j_session: Neo4jSessionDep, data: dict):
     # Example of creating a node with parameters
     query = """
-    CREATE (n:Node {name: $name, properties: $properties})
-    RETURN n
+        CREATE (n:Node {name: $name, properties: $properties})
+        RETURN n
     """
     result = neo4j_session.run(query, name=data["name"], properties=data["properties"])
     return dict(result.single())

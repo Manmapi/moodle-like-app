@@ -1,5 +1,5 @@
 from collections.abc import Generator
-from typing import Annotated
+from typing import Annotated, Tuple
 
 import jwt
 from fastapi import Depends, HTTPException, status
@@ -7,12 +7,14 @@ from fastapi.security import OAuth2PasswordBearer
 from jwt.exceptions import InvalidTokenError
 from pydantic import ValidationError
 from sqlmodel import Session
-from neo4j import GraphDatabase, Session as Neo4jSession
+from neo4j import Session as Neo4jSession
+from influxdb_client import InfluxDBClient
 
 from app.core import security
 from app.core.config import settings
 from app.core.db import engine
 from app.core.neo4j import neo4j_conn
+from app.core.influxdb import influxdb_conn
 from app.models.user import TokenPayload, User
 
 reusable_oauth2 = OAuth2PasswordBearer(
@@ -29,9 +31,14 @@ async def get_neo4j_db():
     async with neo4j_conn.get_session() as session:
         yield session
 
+# Dependency to get InfluxDB client and org context
+async def get_influxdb() -> Generator[Tuple[InfluxDBClient, str], None, None]:
+    async with influxdb_conn.get_session() as (client, org):
+        yield client, org
 
 SessionDep = Annotated[Session, Depends(get_db)]
 Neo4jSessionDep = Annotated[Neo4jSession, Depends(get_neo4j_db)]
+InfluxDBDep = Annotated[Tuple[InfluxDBClient, str], Depends(get_influxdb)]
 TokenDep = Annotated[str, Depends(reusable_oauth2)]
 
 
