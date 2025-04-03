@@ -11,6 +11,9 @@ class UserBase(SQLModel):
     is_superuser: bool = False
     full_name: str | None = Field(default=None, max_length=255)
 
+    # Used to send email about watched threads
+    enable_email_notifications: bool = True
+
 
 # Properties to receive via API on creation
 class UserCreate(UserBase):
@@ -111,3 +114,4 @@ class TokenPayload(SQLModel):
 class NewPassword(SQLModel):
     token: str
     new_password: str = Field(min_length=8, max_length=40)
+
