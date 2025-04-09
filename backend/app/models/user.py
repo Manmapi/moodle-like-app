@@ -1,26 +1,31 @@
 import uuid
+from datetime import datetime
 
 from pydantic import EmailStr
-from sqlmodel import Field, Relationship, SQLModel
+from sqlmodel import Field, SQLModel
 
 
 # Shared properties
 class UserBase(SQLModel):
     email: EmailStr = Field(unique=True, index=True, max_length=255)
-    is_active: bool = True
-    is_superuser: bool = False
-    full_name: str | None = Field(default=None, max_length=255)
+    user_name: str | None = Field(default=None, max_length=255)
+    level: int = Field(default=0) # 0 for admin , 1 for junior, # 2... senior
+    is_banned: bool = False
+    last_login: datetime | None = Field(default=datetime.now())
+    created_at: datetime = Field(default=datetime.now())
+    updated_at: datetime = Field(default=datetime.now())
 
 
 # Properties to receive via API on creation
-class UserCreate(UserBase):
-    password: str = Field(min_length=8, max_length=40)
-
+class UserCreate(SQLModel):
+    email: EmailStr
+    password: str
+    user_name: str
 
 class UserRegister(SQLModel):
     email: EmailStr = Field(max_length=255)
     password: str = Field(min_length=8, max_length=40)
-    full_name: str | None = Field(default=None, max_length=255)
+    user_name: str | None = Field(default=None, max_length=255)
 
 
 # Properties to receive via API on update, all are optional
@@ -30,7 +35,7 @@ class UserUpdate(UserBase):
 
 
 class UserUpdateMe(SQLModel):
-    full_name: str | None = Field(default=None, max_length=255)
+    user_name: str | None = Field(default=None, max_length=255)
     email: EmailStr | None = Field(default=None, max_length=255)
 
 
@@ -43,8 +48,17 @@ class UpdatePassword(SQLModel):
 class User(UserBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     hashed_password: str
-    items: list["Item"] = Relationship(back_populates="owner", cascade_delete=True)
 
+
+class IdentityValidator(SQLModel, table=True):
+    __tablename__ = 'identity_validator'
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: uuid.UUID = Field(nullable=False, foreign_key="user.id")
+    phone_number: int = Field(nullable=False, unique=True)
+    is_validated: bool = Field(default=False, nullable=False)
+    otp: str = Field(nullable=False)
+    created_at: datetime = Field(default=datetime.now)
+    updated_at: datetime = Field(default=datetime.now)
 
 # Properties to return via API, id is always required
 class UserPublic(UserBase):
@@ -55,41 +69,41 @@ class UsersPublic(SQLModel):
     data: list[UserPublic]
     count: int
 
-
-# Shared properties
-class ItemBase(SQLModel):
-    title: str = Field(min_length=1, max_length=255)
-    description: str | None = Field(default=None, max_length=255)
-
-
-# Properties to receive on item creation
-class ItemCreate(ItemBase):
-    pass
-
-
-# Properties to receive on item update
-class ItemUpdate(ItemBase):
-    title: str | None = Field(default=None, min_length=1, max_length=255)  # type: ignore
-
-
-# Database model, database table inferred from class name
-class Item(ItemBase, table=True):
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    owner_id: uuid.UUID = Field(
-        foreign_key="user.id", nullable=False, ondelete="CASCADE"
-    )
-    owner: User | None = Relationship(back_populates="items")
-
-
-# Properties to return via API, id is always required
-class ItemPublic(ItemBase):
-    id: uuid.UUID
-    owner_id: uuid.UUID
-
-
-class ItemsPublic(SQLModel):
-    data: list[ItemPublic]
-    count: int
+#
+# # Shared properties
+# class ItemBase(SQLModel):
+#     title: str = Field(min_length=1, max_length=255)
+#     description: str | None = Field(default=None, max_length=255)
+#
+#
+# # Properties to receive on item creation
+# class ItemCreate(ItemBase):
+#     pass
+#
+#
+# # Properties to receive on item update
+# class ItemUpdate(ItemBase):
+#     title: str | None = Field(default=None, min_length=1, max_length=255)  # type: ignore
+#
+#
+# # Database model, database table inferred from class name
+# class Item(ItemBase, table=True):
+#     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+#     owner_id: uuid.UUID = Field(
+#         foreign_key="user.id", nullable=False, ondelete="CASCADE"
+#     )
+#     owner: User | None = Relationship(back_populates="items")
+#
+#
+# # Properties to return via API, id is always required
+# class ItemPublic(ItemBase):
+#     id: uuid.UUID
+#     owner_id: uuid.UUID
+#
+#
+# class ItemsPublic(SQLModel):
+#     data: list[ItemPublic]
+#     count: int
 
 
 # Generic message

@@ -3,7 +3,7 @@ from typing import Annotated, Tuple
 
 import jwt
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import OAuth2PasswordBearer, HTTPBearer
 from jwt.exceptions import InvalidTokenError
 from pydantic import ValidationError
 from sqlmodel import Session
@@ -41,6 +41,7 @@ Neo4jSessionDep = Annotated[Neo4jSession, Depends(get_neo4j_db)]
 InfluxDBDep = Annotated[Tuple[InfluxDBClient, str], Depends(get_influxdb)]
 TokenDep = Annotated[str, Depends(reusable_oauth2)]
 
+oauth2_scheme = OAuth2PasswordBearer("token")
 
 def get_current_user(session: SessionDep, token: TokenDep) -> User:
     try:
@@ -56,7 +57,7 @@ def get_current_user(session: SessionDep, token: TokenDep) -> User:
     user = session.get(User, token_data.sub)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    if not user.is_active:
+    if user.is_banned:
         raise HTTPException(status_code=400, detail="Inactive user")
     return user
 
