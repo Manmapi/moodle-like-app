@@ -11,16 +11,18 @@ def create_thread(db: Session, thread: ThreadCreate, user: CurrentUser) -> Threa
     return db_thread
 
 def get_thread(db: Session, thread_id: int) -> Thread | None:
-    return db.exec(select(Thread).where(Thread.id == thread_id)).scalars.first()
+    return db.exec(select(Thread).where(Thread.id == thread_id)).first()
 
 def get_thread_by_user(db: Session, user_id: int) -> list[Thread]:
-    return db.exec(select(Thread).where(Thread.user_id == user_id)).scalars().all()
+    return db.exec(select(Thread).where(Thread.user_id == user_id)).all()
 
 def get_thread_by_parent(db: Session, parent_id: int) -> list[Thread]:
-    return db.exec(select(Thread).where(Thread.parent_id == parent_id)).scalars().all()
+    return db.exec(select(Thread).where(Thread.parent_id == parent_id)).all()
 
 def get_thread_by_level(db: Session, level: int) -> list[Thread]:
-    return db.exec(select(Thread).where(Thread.level == level)).scalars().all()
+    return db.exec(select(Thread).where(Thread.level == level)).all()
 
 
+def get_parent_thread(db: Session, thread_id: int) -> Thread | None:
+    return db.exec(select(Thread).where(Thread.id == thread_id)).first()  
     

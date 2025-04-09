@@ -3,13 +3,14 @@ from datetime import datetime
 
 from pydantic import EmailStr
 from sqlmodel import Field, SQLModel
+from sqlalchemy import BigInteger, Column
 
 
 # Shared properties
 class UserBase(SQLModel):
     email: EmailStr = Field(unique=True, index=True, max_length=255)
     user_name: str | None = Field(default=None, max_length=255)
-    level: int = Field(default=0) # 0 for admin , 1 for junior, # 2... senior
+    level: int = Field(default=1) # 0 for admin , 1 for junior, # 2... senior
     is_banned: bool = False
     last_login: datetime | None = Field(default=datetime.now())
     created_at: datetime = Field(default=datetime.now())
@@ -46,14 +47,14 @@ class UpdatePassword(SQLModel):
 
 # Database model, database table inferred from class name
 class User(UserBase, table=True):
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    id: int = Field(default=None, sa_column=Column(BigInteger, primary_key=True, autoincrement=True))
     hashed_password: str
 
 
 class IdentityValidator(SQLModel, table=True):
     __tablename__ = 'identity_validator'
-    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    user_id: uuid.UUID = Field(nullable=False, foreign_key="user.id")
+    id: int = Field(default=None, sa_column=Column(BigInteger, primary_key=True, autoincrement=True))
+    user_id: int = Field(nullable=False, foreign_key="user.id", sa_type=BigInteger)
     phone_number: int = Field(nullable=False, unique=True)
     is_validated: bool = Field(default=False, nullable=False)
     otp: str = Field(nullable=False)
@@ -62,7 +63,7 @@ class IdentityValidator(SQLModel, table=True):
 
 # Properties to return via API, id is always required
 class UserPublic(UserBase):
-    id: uuid.UUID
+    id: int
 
 
 class UsersPublic(SQLModel):

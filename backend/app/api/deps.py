@@ -6,7 +6,7 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, HTTPBearer
 from jwt.exceptions import InvalidTokenError
 from pydantic import ValidationError
-from sqlmodel import Session
+from sqlmodel import Session, select
 from neo4j import Session as Neo4jSession
 from influxdb_client import InfluxDBClient
 
@@ -66,8 +66,8 @@ CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
 def get_current_active_superuser(current_user: CurrentUser) -> User:
-    if not current_user.is_superuser:
+    if current_user.level != 0:
         raise HTTPException(
-            status_code=403, detail="The user doesn't have enough privileges"
+            status_code=400, detail="The user doesn't have enough privileges"
         )
     return current_user
