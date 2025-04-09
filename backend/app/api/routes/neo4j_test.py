@@ -20,15 +20,32 @@ async def create_node(neo4j_session: Neo4jSessionDep, data: dict):
     """
     result = neo4j_session.run(query, name=data["name"], properties=data["properties"])
     return dict(result.single())
-@router.get("/similarity_post")
-def similarity_post(neo4j_session : Neo4jSessionDep,post_id:int  )-> Any:
+@router.get("/similarity_thread")
+def similarity_post(neo4j_session : Neo4jSessionDep,thread_id:int  )-> Any:
     query = """
-       MATCH (b:Blog)-[:HAS_TAG|:HAS_CATEGORY]->(c)<-[:HAS_TAG|:HAS_CATEGORY]-(similar:Blog)
-       WHERE b.id = $blog_id AND b <> similar
-       RETURN similar.id AS blog_id, COUNT(c) AS score
-       ORDER BY score DESC, rand()
-       LIMIT 5
+     MATCH (t:Thread)-[:HAS_TAG]->(tag:Tag)<-[:HAS_TAG]-(other:Thread)
+WHERE t.id = $thread_id AND t <> other
+WITH other, COUNT(tag) AS sharedTags
+ORDER BY sharedTags DESC
+RETURN other.id AS threadId, sharedTags
+LIMIT 5
        """
-    result = neo4j_session.run(query,blog_id=post_id)
-    recommend=[record["blog_id"] for record in result]
+    result = neo4j_session.run(query,thread_id=thread_id)
+    recommend=[record["threadId"] for record in result]
     return BlogRecommendation(recommendations=recommend)
+@router.post("/add_tag_to_thread")
+def add_tag(neo4j_session:Neo4jSessionDep,thread_id:int, tag_name:str)->Any:
+    query = """
+        MATCH (t:Thread {id: $thread_id})
+        MERGE (tag:Tag {name: $tag_name})
+        MERGE (t)-[:HAS_TAG]->(tag)
+        RETURN t.id AS threadId, tag.name AS tagName
+        """
+    result =neo4j_session.run(query, thread_id=thread_id, tag_name=tag_name)
+    record = result.single()
+    if not record:
+        raise ValueError("Thread not found")
+    return {
+            "thread_id": record["threadId"],
+            "tag_name": record["tagName"]
+        }
