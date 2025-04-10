@@ -62,7 +62,11 @@ class IdentityValidator(SQLModel, table=True):
     updated_at: datetime = Field(default=datetime.now)
 
 # Properties to return via API, id is always required
-class UserPublic(UserBase):
+class UserPublic(SQLModel):
+    user_name: str
+    level: int
+    is_banned: bool
+    last_login: datetime | None = Field(default=datetime.now())
     id: int
 
 

@@ -1,5 +1,5 @@
 import uuid
-from typing import Any
+from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, col, delete, func, select
@@ -215,3 +215,10 @@ def delete_user(
     session.delete(user)
     session.commit()
     return Message(message="User deleted successfully")
+
+@router.get("/{user_id}/posts", response_model=UsersPublic)
+def get_users_by_ids(session: SessionDep, user_ids: List[int]):
+    db_users = session.exec(select(User).where(User.id.in_(user_ids))).all()
+    return UsersPublic(data=db_users, count=len(db_users))
+
+

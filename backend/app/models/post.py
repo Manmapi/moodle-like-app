@@ -24,9 +24,7 @@ class PostReaction(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.now)
 
 class PostCreate(SQLModel):
-    thread_id: int
     content: str
-    user_id: int
     quote_ids: list[int] = Field(default_factory=list)
 
 class PostResponse(SQLModel):
