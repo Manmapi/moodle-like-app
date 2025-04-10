@@ -28,3 +28,12 @@ class PostCreate(SQLModel):
     content: str
     user_id: int
     quote_ids: list[int] = Field(default_factory=list)
+
+class PostResponse(SQLModel):
+    id: int
+    thread_id: int
+    user_id: int
+    content: str
+    quote_ids: list[int]
+    created_at: datetime
+    updated_at: datetime

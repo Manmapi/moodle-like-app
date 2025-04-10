@@ -10,7 +10,8 @@ class Thread(SQLModel, table=True):
     parent_id: int | None = Field(default=None, foreign_key="thread.id", sa_type=BigInteger)
 
     count_children: int = Field(default=0)
-
+    post_count: int = Field(default=0)
+    
     created_at: datetime = Field(default_factory=datetime.now)
     updated_at: datetime = Field(default_factory=datetime.now)
 
@@ -24,3 +25,5 @@ class ThreadCreate(SQLModel):
     title: str
     level: int
     parent_id: int | None = None
+    content: str | None = None
+
