@@ -6,6 +6,7 @@ from sqlmodel import SQLModel, Field, select, update
 from app.models.thread import ThreadCreate, Thread
 from app.data_access.thread import get_parent_thread
 
+from datetime import datetime
 router = APIRouter(prefix="/thread", tags=["thread"])
 
 
@@ -24,7 +25,7 @@ class ThreadWithChildren(SQLModel):
     level: int
     user_id: int
     parent_id: int | None
-    children: List["ThreadResponse"] = Field(default_factory=list)
+    children: List["ThreadWithChildren"] = Field(default_factory=list)
 
 class ThreadResponse(SQLModel):
     id: int
@@ -58,7 +59,7 @@ def create_post(session: SessionDep, thread_id: int, post: PostCreate, current_u
     db_post = Post(**post.model_dump(), thread_id=db_thread.id, user_id=current_user.id)
     session.add(db_post)
     # atomic increment post count
-    q = update(Thread).where(Thread.id == thread_id).values(post_count=Thread.post_count + 1)
+    q = update(Thread).where(Thread.id == thread_id).values(post_count=Thread.post_count + 1, updated_at=datetime.now())
     session.exec(q)
     session.commit()
     session.refresh(db_thread)
@@ -100,23 +101,33 @@ def get_root_thread(session: SessionDep):
     db_thread = session.exec(select(Thread).where(Thread.level == 0)).first()
     return db_thread
 
-@router.get("/{thread_id}", response_model=ThreadResponse)
-def get_thread(session: SessionDep, thread_id: int):
-    db_thread = session.exec(select(Thread).where(Thread.id == thread_id)).first()
-    return db_thread
-
-# Get child threads of a thread
-@router.get("/{thread_id}/children", response_model=List[ThreadResponse])
-def get_children_threads(session: SessionDep, thread_id: int):
-    db_threads = session.exec(select(Thread).where(Thread.parent_id == thread_id).order_by(Thread.created_at.desc())).all()
-    return db_threads
-
-@router.get("/{thread_id}/children/all", response_model=ThreadWithChildren)
-def get_thread_and_children(session: SessionDep, thread_id: int):
-    parent = session.exec(select(Thread).where(Thread.id == thread_id)).first()
+# TODO: Cache this response later once we set up Redis.
+@router.get("/homepage", response_model=ThreadWithChildren)
+def get_homepage(session: SessionDep):
+    parent = session.exec(select(Thread).where(Thread.level == 0)).first()
     if parent is None:
         raise HTTPException(status_code=404, detail="Thread not found")
-    db_children = session.exec(select(Thread).where(Thread.parent_id == thread_id)).all()
+    frist_level_threads = session.exec(select(Thread).where(Thread.parent_id == parent.id)).all()
+    second_level_threads = []
+    first_level_thread_ids = [thread.id for thread in frist_level_threads]
+    second_level_threads = session.exec(select(Thread).where(Thread.parent_id.in_(first_level_thread_ids))).all()
+
+    second_level_thread_mapping = {}
+
+    for second_level_thread in second_level_threads:
+        if second_level_thread.parent_id not in second_level_thread_mapping:
+            second_level_thread_mapping[second_level_thread.parent_id] = []
+        second_level_thread_mapping[second_level_thread.parent_id].append(second_level_thread)
+
+    first_level_thread_respone = [ThreadWithChildren(
+        id=thread.id,
+        title=thread.title,
+        level=thread.level,
+        user_id=thread.user_id,
+        parent_id=thread.parent_id,
+        children=second_level_thread_mapping[thread.id]
+    ) for thread in frist_level_threads]
+
     return ThreadWithChildren(
         id=parent.id,
         title=parent.title,
@@ -124,9 +135,15 @@ def get_thread_and_children(session: SessionDep, thread_id: int):
         user_id=parent.user_id,
         parent_id=parent.parent_id,
         count_children=parent.count_children,
-        children=db_children
+        children=first_level_thread_respone
     )
 
+
+
+@router.get("/{thread_id}", response_model=ThreadResponse)
+def get_thread(session: SessionDep, thread_id: int):
+    db_thread = session.exec(select(Thread).where(Thread.id == thread_id)).first()
+    return db_thread
 
 @router.get("/{thread_id}/posts", response_model=List[PostResponse])
 def get_posts(session: SessionDep, thread_id: int, limit: int = 10, offset: int = 0):
