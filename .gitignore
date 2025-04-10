@@ -13,3 +13,4 @@ node_modules/
 
 .idea/*
 neo4j/*
+backend/app/scripts/data/*
