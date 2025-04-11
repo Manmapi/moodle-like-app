@@ -1,8 +1,8 @@
 """Init database
 
-Revision ID: 8b0b58aa495d
+Revision ID: 7c49f714c74c
 Revises: 
-Create Date: 2025-04-10 13:32:46.024811
+Create Date: 2025-04-11 13:00:08.310621
 
 """
 from alembic import op
@@ -11,7 +11,7 @@ import sqlmodel.sql.sqltypes
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
-revision = '8b0b58aa495d'
+revision = '7c49f714c74c'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -52,8 +52,7 @@ def upgrade():
     sa.Column('level', sa.Integer(), nullable=False),
     sa.Column('user_id', sa.BigInteger(), nullable=False),
     sa.Column('parent_id', sa.BigInteger(), nullable=True),
-    sa.Column('count_children', sa.Integer(), nullable=False),
-    sa.Column('post_count', sa.Integer(), nullable=False),
+    sa.Column('children_count', sa.Integer(), nullable=False),
     sa.Column('updated_at', sa.DateTime(), nullable=False),
     sa.Column('created_at', sa.DateTime(), nullable=False),
     sa.ForeignKeyConstraint(['parent_id'], ['thread.id'], ),

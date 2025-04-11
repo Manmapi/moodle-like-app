@@ -1,6 +1,6 @@
 from app.core.db import engine
 from app.models.thread import Thread
-from sqlmodel import Session
+from sqlmodel import Session, update
 
 from sqlalchemy.dialects.postgresql import insert
 
@@ -39,6 +39,8 @@ def main():
         with Session(engine) as session:
             parent_thread_obj = Thread(title=parent_thread, level=1, user_id=1, parent_id=1)
             session.add(parent_thread_obj)
+            root_level_update_q = update(Thread).values(children_count=Thread.children_count + 1).where(Thread.id == 1)
+            session.execute(root_level_update_q)
             session.commit()
             session.refresh(parent_thread_obj)
 
@@ -52,7 +54,10 @@ def main():
                     parent_id=parent_thread_obj.id
                 ))
             q = insert(Thread).values(insert_data).on_conflict_do_nothing()
+            root_thread_update_q = update(Thread).values(children_count=Thread.children_count + len(insert_data)).where(Thread.id == parent_thread_obj.id)
             session.execute(q)
+            session.execute(root_thread_update_q)
+            
             session.commit()
 
 if __name__ == "__main__":

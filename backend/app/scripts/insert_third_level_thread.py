@@ -94,10 +94,16 @@ def main():
                             parent_id=second_level_id,
                             user_id=db_user_id,
                             level=3,
+                            children_count=0,
                         )
                         db.add(thread)
                         db.commit()
                         db.refresh(thread)
+
+                        second_level_update_q = update(Thread).values(children_count=Thread.children_count + 1).where(Thread.id == second_level_id)
+                        db.exec(second_level_update_q)
+                        db.commit()
+
                         thread_id = thread.id   
                         for line in f:
                             data = json.loads(line)
@@ -112,13 +118,13 @@ def main():
                                 "email": f"{user_id}@gmail.com",
                                 "hashed_password": get_password_hash("12345678"),
                             }
+                            
                             post_data = {
                                 "thread_id": thread.id,
                                 "content": content,
                                 "created_at": message_time,
                                 "quote_ids": [],
                             }
-                            # Handle one by one to avoid memory issue   
                             
                             # Handle duplicate original_user_id in user_data
                             user_q = insert(User).values(user_data).on_conflict_do_nothing(index_elements=["origin_user_id"]).returning(User.id)
@@ -135,7 +141,7 @@ def main():
                             post_data["user_id"] = db_user_id                
                             post_q = insert(Post).values(post_data)
 
-                            thread_q = update(Thread).values(post_count=Thread.post_count + 1).where(Thread.id == thread_id)
+                            thread_q = update(Thread).values(children_count=Thread.children_count + 1).where(Thread.id == thread_id)
                             db.exec(post_q)
                             db.exec(thread_q)
                             db.commit()
