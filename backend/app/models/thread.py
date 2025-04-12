@@ -17,7 +17,6 @@ class Thread(SQLModel, table=True):
 class ThreadView(SQLModel, table=True):
     id: int = Field(default=None, sa_column=Column(BigInteger, primary_key=True, autoincrement=True))
     thread_id: int = Field(foreign_key="thread.id", sa_type=BigInteger)
-    user_id: int = Field(foreign_key="user.id", sa_type=BigInteger)
     created_at: datetime = Field(default_factory=datetime.now)
 
 class ThreadCreate(SQLModel):

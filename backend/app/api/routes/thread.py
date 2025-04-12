@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 from app.api.deps import CurrentUser, SessionDep
 from app.models.post import Post, PostCreate, PostResponse, PostReaction
 from sqlmodel import SQLModel, Field, select, update        
-from app.models.thread import ThreadCreate, Thread
+from app.models.thread import ThreadCreate, Thread, ThreadView
 from app.models.category import Category
 from app.data_access.thread import get_parent_thread
 from app.data_access import neo4j
@@ -16,7 +16,6 @@ router = APIRouter(prefix="/thread", tags=["thread"])
 class ThreadWithPosts(SQLModel):
     id: int
     title: str
-    level: int
     user_id: int
     category_id: int | None
     posts: List["PostResponse"] = Field(default_factory=list)
@@ -32,7 +31,6 @@ class CategoryWithChildren(SQLModel):
 class ThreadResponse(SQLModel):
     id: int
     title: str
-    level: int
     user_id: int
     category_id: int | None   
     children_count: int
@@ -84,7 +82,6 @@ def create_thread(session: SessionDep, thread: ThreadCreate, current_user: Curre
     return ThreadWithPosts(
         id=db_thread.id,
         title=db_thread.title,
-        level=db_thread.level,
         user_id=db_thread.user_id,
         category_id=db_thread.category_id,
         posts=children,
@@ -188,3 +185,13 @@ def get_posts(session: SessionDep, thread_id: int, limit: int = 10, offset: int 
 def get_post_reactions(session: SessionDep, post_ids: List[int]):
     db_posts = session.exec(select(PostReaction).where(PostReaction.post_id.in_(post_ids))).all()
     return {post_id: db_posts for post_id in post_ids}
+
+
+# Insert record to ThreadView table
+@router.post("/{thread_id}/view", response_model=int)
+def insert_thread_view(session: SessionDep, thread_id: int):
+    db_thread_view = ThreadView(thread_id=thread_id)
+    session.add(db_thread_view)
+    session.commit()
+    session.refresh(db_thread_view)
+    return db_thread_view.id 

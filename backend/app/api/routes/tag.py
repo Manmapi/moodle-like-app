@@ -30,7 +30,7 @@ def get_tags(session: SessionDep):
     tags = session.exec(select(Tag)).all()
     return tags
 
-@router.post("/{tag_id}/thread", response_model=ThreadTag)
+@router.post("/thread", response_model=dict)
 def add_tags_to_thread(tag_ids: list[int], thread_id: int, session: SessionDep, neo4j_session: Neo4jSessionDep, current_user: CurrentUser):
     if current_user.level != 0:
         raise HTTPException(status_code=403, detail="Only admin can add thread to tag")
@@ -41,7 +41,9 @@ def add_tags_to_thread(tag_ids: list[int], thread_id: int, session: SessionDep, 
         raise HTTPException(status_code=404, detail="Thread not found")
     # Check if all tags exist
     tags = session.exec(select(Tag).where(Tag.id.in_(tag_ids))).all()
-    if len(tags) != len(tag_ids):
+    tag_names = [tag.name for tag in tags] # Get names for Neo4j
+    
+    if len(tags) != len(set(tag_ids)): # Check against unique input IDs
         raise HTTPException(status_code=404, detail="One or more tags not found")   
     
     
@@ -53,10 +55,37 @@ def add_tags_to_thread(tag_ids: list[int], thread_id: int, session: SessionDep, 
         }
         
         insert_data.append(data)
-    q = insert(ThreadTag).values(insert_data).on_conflict_do_nothing(index_elements=["tag_id", "thread_id"])
-    session.exec(q)
-    # Add tag to neo4j
-    session.commit()
-    neo4j.add_tags_to_thread(thread_id, tag_ids, neo4j_session=neo4j_session)
+        
+    if insert_data:
+        q = insert(ThreadTag).values(insert_data).on_conflict_do_nothing(index_elements=["tag_id", "thread_id"])
+        session.execute(q) # Use execute for insert statements
+        # Add tag to neo4j
+        session.commit()
+        neo4j.add_tags_to_thread(thread_id, tag_names, neo4j_session=neo4j_session)
+    else:
+        return {"message": "No new tags to add or invalid input"}
 
-    return {"message": "Tags added to thread"}   
+    return {"message": "Tags added to thread"}
+
+@router.get("/thread/{thread_id}", response_model=List[Tag])
+def get_tags_for_thread(thread_id: int, session: SessionDep):
+    """
+    Retrieve all tags associated with a specific thread.
+    """
+    # Optional: Check if thread exists first
+    # thread = session.get(Thread, thread_id)
+    # if not thread:
+    #     raise HTTPException(status_code=404, detail="Thread not found")
+
+    # Find all tag IDs associated with the thread
+    tag_ids_stmt = select(ThreadTag.tag_id).where(ThreadTag.thread_id == thread_id)
+    tag_ids = session.exec(tag_ids_stmt).all()
+
+    if not tag_ids:
+        return [] # No tags associated with this thread
+
+    # Fetch the actual Tag objects based on the IDs
+    tags_stmt = select(Tag).where(Tag.id.in_(tag_ids))
+    tags = session.exec(tags_stmt).all()
+
+    return tags   
