@@ -81,13 +81,36 @@ services:
       SMTP_PORT: "1025"
       SMTP_TLS: "false"
       EMAILS_FROM_EMAIL: "noreply@example.com"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - backend-network # Ensure it's on the same network as backend
 
   neo4j:
     ports:
       - "7474:7474"  # HTTP (optional, for Neo4j Browser)
       - "7687:7687"  # Bolt (used by the Python driver)
 
+  # Add Redis Service Override (e.g., for exposing port)
+  redis:
+    ports:
+      - "6379:6379" # Expose Redis port to host
+    networks:
+      - backend-network
+      - default # Ensure it's on all networks
+    command: redis-server --save 60 1 --loglevel warning --requirepass ${REDIS_PASSWORD:-redispassword} --protected-mode no --bind 0.0.0.0
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redispassword}
+
 networks:
   traefik-public:
     # For local dev, don't expect an external Traefik network
     external: false
+
+volumes:
+  # ... existing volumes ...
+  redis_data:
+    driver: local

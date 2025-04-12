@@ -25,6 +25,7 @@ dependencies = [
     "influxdb-client>=1.48.0",
     "aiohttp>=3.9.0", # Required for InfluxDB async client
     "aiocsv>=1.3.1", # Required for InfluxDB async CSV parsing
+    "redis>=5.2.1",
 ]
 
 [tool.uv]

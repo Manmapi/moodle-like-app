@@ -79,6 +79,9 @@ services:
       - NEO4J_URI=bolt://neo4j:7687  # For Python app
       - NEO4J_USER=${NEO4J_USER?Variable not set}  # For Python app
       - NEO4J_PASSWORD=${NEO4J_PASSWORD?Variable not set}  # For Python app
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redispassword}
 
   backend:
     image: '${DOCKER_IMAGE_BACKEND?Variable not set}:${TAG-latest}'
@@ -89,9 +92,10 @@ services:
     depends_on:
       db:
         condition: service_healthy
-        restart: true
       prestart:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     env_file:
       - .env
     environment:
@@ -115,6 +119,9 @@ services:
       - NEO4J_URI=bolt://neo4j:7687  # For Python app
       - NEO4J_USER=${NEO4J_USER?Variable not set}  # For Python app
       - NEO4J_PASSWORD=${NEO4J_PASSWORD?Variable not set}  # For Python app
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-redispassword}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/utils/health-check/"]
       interval: 10s
@@ -135,12 +142,29 @@ services:
       - traefik.http.routers.${STACK_NAME?Variable not set}-backend-https.tls.certresolver=le
       - traefik.http.routers.${STACK_NAME?Variable not set}-backend-http.middlewares=https-redirect
 
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    command: redis-server --save 60 1 --loglevel warning --requirepass ${REDIS_PASSWORD:-redispassword}
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend-network
+      - default
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redispassword}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
 volumes:
   app-db-data:
   influxdb-data:
+  redis_data:
 
 networks:
   traefik-public:
     external: true
   default:
+  backend-network:

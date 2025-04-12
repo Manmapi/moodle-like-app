@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from sqlmodel import Session, select, update
 from app.models.thread import Tag, ThreadTag
 from app.models.thread import Thread
@@ -7,31 +7,52 @@ from typing import List
 from sqlmodel import SQLModel
 from app.data_access import neo4j
 from sqlalchemy.dialects.postgresql import insert
+from app.core.redis import redis_conn
 
 router = APIRouter(prefix="/tag", tags=["tag"])
+
+# Constants for caching
+TAGS_CACHE_KEY = "all_tags"
+THREAD_TAGS_KEY_PREFIX = "thread_tags:"
+TAGS_CACHE_TTL = 6 * 60 * 60  # 6 hours in seconds
 
 class CreateTag(SQLModel):
     name: str
     description: str | None = None
 
 @router.post("/", response_model=Tag)
-def create_tag(tag: CreateTag, session: SessionDep, current_user: CurrentUser):
+async def create_tag(tag: CreateTag, session: SessionDep, current_user: CurrentUser):
     if current_user.level != 0:
         raise HTTPException(status_code=403, detail="Only admin can create tag")
     db_tag = Tag(**tag.model_dump())
     session.add(db_tag)
     session.commit()
-
     session.refresh(db_tag)
+    
+    # Invalidate the tags cache when new tag is created
+    await redis_conn.remove(TAGS_CACHE_KEY)
+    
     return db_tag
 
 @router.get("/", response_model=List[Tag])
-def get_tags(session: SessionDep):
+async def get_tags(session: SessionDep):
+    # Try to get tags from cache first
+    cached_tags = await redis_conn.get_cached_object(TAGS_CACHE_KEY)
+    
+    if cached_tags:
+        # Convert the cached data back to Tag objects
+        return [Tag(**tag_data) for tag_data in cached_tags]
+    
+    # If not in cache, get from database
     tags = session.exec(select(Tag)).all()
+    
+    # Cache the result for 6 hours
+    await redis_conn.cache_list(TAGS_CACHE_KEY, tags, TAGS_CACHE_TTL)
+    
     return tags
 
 @router.post("/thread", response_model=dict)
-def add_tags_to_thread(tag_ids: list[int], thread_id: int, session: SessionDep, neo4j_session: Neo4jSessionDep, current_user: CurrentUser):
+async def add_tags_to_thread(tag_ids: list[int], thread_id: int, session: SessionDep, neo4j_session: Neo4jSessionDep, current_user: CurrentUser):
     if current_user.level != 0:
         raise HTTPException(status_code=403, detail="Only admin can add thread to tag")
     
@@ -62,22 +83,28 @@ def add_tags_to_thread(tag_ids: list[int], thread_id: int, session: SessionDep, 
         # Add tag to neo4j
         session.commit()
         neo4j.add_tags_to_thread(thread_id, tag_names, neo4j_session=neo4j_session)
+        
+        # Invalidate thread tags cache
+        thread_tags_key = f"{THREAD_TAGS_KEY_PREFIX}{thread_id}"
+        await redis_conn.remove(thread_tags_key)
     else:
         return {"message": "No new tags to add or invalid input"}
 
     return {"message": "Tags added to thread"}
 
 @router.get("/thread/{thread_id}", response_model=List[Tag])
-def get_tags_for_thread(thread_id: int, session: SessionDep):
+async def get_tags_for_thread(thread_id: int, session: SessionDep):
     """
     Retrieve all tags associated with a specific thread.
     """
-    # Optional: Check if thread exists first
-    # thread = session.get(Thread, thread_id)
-    # if not thread:
-    #     raise HTTPException(status_code=404, detail="Thread not found")
-
-    # Find all tag IDs associated with the thread
+    # Try to get from cache first
+    cache_key = f"{THREAD_TAGS_KEY_PREFIX}{thread_id}"
+    cached_tags = await redis_conn.get_cached_object(cache_key)
+    
+    if cached_tags:
+        return [Tag(**tag_data) for tag_data in cached_tags]
+        
+    # If not in cache, get from database
     tag_ids_stmt = select(ThreadTag.tag_id).where(ThreadTag.thread_id == thread_id)
     tag_ids = session.exec(tag_ids_stmt).all()
 
@@ -87,5 +114,8 @@ def get_tags_for_thread(thread_id: int, session: SessionDep):
     # Fetch the actual Tag objects based on the IDs
     tags_stmt = select(Tag).where(Tag.id.in_(tag_ids))
     tags = session.exec(tags_stmt).all()
+    
+    # Cache the result for 6 hours
+    await redis_conn.cache_list(cache_key, tags, TAGS_CACHE_TTL)
 
     return tags   

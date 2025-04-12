@@ -10,8 +10,13 @@ from app.data_access import neo4j
 from collections import defaultdict 
 from datetime import datetime
 from app.api.deps import Neo4jSessionDep
+from app.core.redis import redis_conn
+
 router = APIRouter(prefix="/thread", tags=["thread"])
 
+# Constants for caching
+HOMEPAGE_CACHE_KEY = "homepage_data"
+HOMEPAGE_CACHE_TTL = 30 * 60  # 30 minutes in seconds
 
 class ThreadWithPosts(SQLModel):
     id: int
@@ -26,6 +31,7 @@ class CategoryWithChildren(SQLModel):
     level: int
     user_id: int
     parent_id: int | None
+    children_count: int
     children: List["CategoryWithChildren"] = Field(default_factory=list)
 
 class ThreadResponse(SQLModel):
@@ -89,7 +95,15 @@ def create_thread(session: SessionDep, thread: ThreadCreate, current_user: Curre
 
 # TODO: Cache this response later once we set up Redis.
 @router.get("/homepage", response_model=CategoryWithChildren)
-def get_homepage(session: SessionDep):
+async def get_homepage(session: SessionDep):
+    # Try to get from cache first
+    cached_homepage = await redis_conn.get_cached_object(HOMEPAGE_CACHE_KEY)
+    
+    if cached_homepage:
+        # Convert the cached data to CategoryWithChildren models
+        return CategoryWithChildren(**cached_homepage)
+    
+    # If not in cache, get from database
     parent = session.exec(select(Category).where(Category.level == 0)).first()
     if parent is None:
         raise HTTPException(status_code=404, detail="Category not found")
@@ -111,10 +125,11 @@ def get_homepage(session: SessionDep):
         level=category.level,
         user_id=category.user_id,
         parent_id=category.parent_id,
+        children_count=category.children_count,
         children=second_level_category_mapping[category.id]
     ) for category in frist_level_category]
 
-    return CategoryWithChildren(
+    result = CategoryWithChildren(
         id=parent.id,
         title=parent.title,
         level=parent.level,
@@ -123,6 +138,11 @@ def get_homepage(session: SessionDep):
         children_count=parent.children_count,
         children=first_level_category_respone
     )
+    
+    # Cache the result for 30 minutes
+    await redis_conn.cache_object(HOMEPAGE_CACHE_KEY, result, HOMEPAGE_CACHE_TTL)
+    
+    return result
 
 
 @router.get("/similar_threads", response_model=List[ThreadResponse])
