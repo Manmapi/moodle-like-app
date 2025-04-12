@@ -10,7 +10,7 @@ from sqlalchemy import BigInteger, Column
 class UserBase(SQLModel):
     email: EmailStr = Field(unique=True, index=True, max_length=255)
     user_name: str | None = Field(default=None, max_length=255)
-    level: int = Field(default=1) # 0 for admin , 1 for junior, # 2... senior
+    level: int = Field(default=1) # 0 for admin , 1 for senior, # 2... junior
     
 
     # We have this field because we crawl from other platform and does want to duplicate user.

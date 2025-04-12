@@ -68,6 +68,7 @@ def create_user_open(
         email=user_in.email,
         password=user_in.password,
         user_name=user_in.user_name,
+        level=2,
     )
     user = crud.create_user(session=session, user_create=user_create)
     return user

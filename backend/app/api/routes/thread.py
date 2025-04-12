@@ -33,7 +33,7 @@ class ThreadResponse(SQLModel):
     level: int
     user_id: int
     parent_id: int | None   
-    post_count: int
+    children_count: int
 
 def can_create_thread(current_user: CurrentUser, thread: ThreadCreate, parent_thread: Thread | None) -> Optional[str]:
     if current_user.level > 0 and thread.parent_id is None:
@@ -59,11 +59,11 @@ def create_post(session: SessionDep, thread_id: int, post: PostCreate, current_u
     db_post = Post(**post.model_dump(), thread_id=db_thread.id, user_id=current_user.id)
     session.add(db_post)
     # atomic increment post count
-    q = update(Thread).where(Thread.id == thread_id).values(post_count=Thread.post_count + 1, updated_at=datetime.now())
+    q = update(Thread).where(Thread.id == thread_id).values(children_count=Thread.children_count + 1, updated_at=datetime.now())
     session.exec(q)
     session.commit()
     session.refresh(db_thread)
-    return db_thread.post_count
+    return db_thread.children_count
 
 @router.post("/", response_model=ThreadWithPosts)
 def create_thread(session: SessionDep, thread: ThreadCreate, current_user: CurrentUser):
@@ -74,9 +74,14 @@ def create_thread(session: SessionDep, thread: ThreadCreate, current_user: Curre
     if error_message is not None:
         raise HTTPException(status_code=403, detail=error_message)
     
-    db_thread = Thread(**thread.model_dump(), user_id=current_user.id, count_children=0, post_count=1)
+    db_thread = Thread(**thread.model_dump(), user_id=current_user.id, children_count=1)
     session.add(db_thread)  
     session.commit()
+
+    update_q = update(Thread).where(Thread.id == thread.parent_id).values(children_count=Thread.children_count + 1)
+    session.exec(update_q)
+    session.commit()
+
     if thread.content is not None:
         first_post = Post(thread_id=db_thread.id, user_id=current_user.id, content=thread.content)
         session.add(first_post)
@@ -134,11 +139,24 @@ def get_homepage(session: SessionDep):
         level=parent.level,
         user_id=parent.user_id,
         parent_id=parent.parent_id,
-        count_children=parent.count_children,
+        children_count=parent.children_count,
         children=first_level_thread_respone
     )
 
+class PaginatedThread(SQLModel):
+    threads: List[ThreadResponse]
+    total: int
 
+
+@router.get("/{thread_id}/get_third_level_thread", response_model=PaginatedThread)
+def get_third_level_thread(session: SessionDep, parent_thread_id: int, limit: int = 10, offset: int = 0):
+    parent_thread = session.exec(select(Thread).where(Thread.id == parent_thread_id)).first()   
+    if parent_thread is None:
+        raise HTTPException(status_code=404, detail="Parent thread not found")
+    if parent_thread.level != 2:
+        raise HTTPException(status_code=403, detail="Parent thread is not a second level thread")
+    threads = session.exec(select(Thread).where(Thread.parent_id == parent_thread.id).order_by(Thread.updated_at.desc()).offset(offset).limit(limit)).all()
+    return PaginatedThread(threads=threads, total=len(threads))
 
 @router.get("/{thread_id}", response_model=ThreadResponse)
 def get_thread(session: SessionDep, thread_id: int):
@@ -147,6 +165,11 @@ def get_thread(session: SessionDep, thread_id: int):
 
 @router.get("/{thread_id}/posts", response_model=List[PostResponse])
 def get_posts(session: SessionDep, thread_id: int, limit: int = 10, offset: int = 0):
+    thread = session.exec(select(Thread).where(Thread.id == thread_id)).first()
+    if thread is None:
+        raise HTTPException(status_code=404, detail="Thread not found") 
+    if thread.level != 3:
+        raise HTTPException(status_code=400, detail="Thread is not a third level thread")
     db_posts = session.exec(select(Post).where(Post.thread_id == thread_id).order_by(Post.id.asc()).offset(offset).limit(limit)).all()
     return db_posts 
 

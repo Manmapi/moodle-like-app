@@ -102,7 +102,8 @@ class Settings(BaseSettings):
                 "for security, please change it, at least for deployments."
             )
             if self.ENVIRONMENT == "local":
-                warnings.warn(message, stacklevel=1)
+                ...
+                # warnings.warn(message, stacklevel=1)
             else:
                 raise ValueError(message)
 
