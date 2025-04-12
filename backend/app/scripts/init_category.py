@@ -1,10 +1,10 @@
 from app.core.db import engine
-from app.models.thread import Thread
+from app.models.category import Category
 from sqlmodel import Session, update
 
 from sqlalchemy.dialects.postgresql import insert
 
-thread_data = {
+category_data = {
     "Đại sảnh": [
         "Thông báo", 
         "Gợi ý",
@@ -34,29 +34,29 @@ thread_data = {
 
 
 def main():
-    for parent_thread, threads in thread_data.items():
-        print("Processing parent thread: ", parent_thread)
+    for parent_category, categories in category_data.items():
+        print("Processing parent category: ", parent_category)
         with Session(engine) as session:
-            parent_thread_obj = Thread(title=parent_thread, level=1, user_id=1, parent_id=1)
-            session.add(parent_thread_obj)
-            root_level_update_q = update(Thread).values(children_count=Thread.children_count + 1).where(Thread.id == 1)
+            parent_category_obj = Category(title=parent_category, level=1, user_id=1, parent_id=1)
+            session.add(parent_category_obj)
+            root_level_update_q = update(Category).values(children_count=Category.children_count + 1).where(Category.id == 1)
             session.execute(root_level_update_q)
             session.commit()
-            session.refresh(parent_thread_obj)
+            session.refresh(parent_category_obj)
 
             insert_data = []
 
-            for thread in threads:
+            for category in categories:
                 insert_data.append(dict(
-                    title=thread, 
+                    title=category, 
                     level=2, 
                     user_id=1, 
-                    parent_id=parent_thread_obj.id
+                    parent_id=parent_category_obj.id
                 ))
-            q = insert(Thread).values(insert_data).on_conflict_do_nothing()
-            root_thread_update_q = update(Thread).values(children_count=Thread.children_count + len(insert_data)).where(Thread.id == parent_thread_obj.id)
+            q = insert(Category).values(insert_data).on_conflict_do_nothing()
+            root_category_update_q = update(Category).values(children_count=Category.children_count + len(insert_data)).where(Category.id == parent_category_obj.id)
             session.execute(q)
-            session.execute(root_thread_update_q)
+            session.execute(root_category_update_q)
             
             session.commit()
 

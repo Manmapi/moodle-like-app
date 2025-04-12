@@ -4,6 +4,7 @@ from app.api.deps import CurrentUser, SessionDep
 from app.models.post import Post, PostCreate, PostResponse, PostReaction
 from sqlmodel import SQLModel, Field, select, update        
 from app.models.thread import ThreadCreate, Thread
+from app.models.category import Category
 from app.data_access.thread import get_parent_thread
 from app.data_access import neo4j
 from collections import defaultdict 
@@ -17,38 +18,25 @@ class ThreadWithPosts(SQLModel):
     title: str
     level: int
     user_id: int
-    parent_id: int | None
+    category_id: int | None
     posts: List["PostResponse"] = Field(default_factory=list)
 
-class ThreadWithChildren(SQLModel):
+class CategoryWithChildren(SQLModel):
     id: int
     title: str
     level: int
     user_id: int
     parent_id: int | None
-    children: List["ThreadWithChildren"] = Field(default_factory=list)
+    children: List["CategoryWithChildren"] = Field(default_factory=list)
 
 class ThreadResponse(SQLModel):
     id: int
     title: str
     level: int
     user_id: int
-    parent_id: int | None   
+    category_id: int | None   
     children_count: int
     updated_at: datetime
-
-def can_create_thread(current_user: CurrentUser, thread: ThreadCreate, parent_thread: Thread | None) -> Optional[str]:
-    if current_user.level > 0 and thread.parent_id is None:
-        return "Only admin can create thread"
-    if parent_thread is not None and parent_thread.level != 2:
-        return "User only allow to create thread with parent thread level is 2."
-    if parent_thread is None and thread.parent_id is not None:
-        return "Parent thread not found"  
-    if thread.level >= 1 and parent_thread is None:
-        return "Not root thread must have parent thread."   
-    if thread.level == 3 and thread.content is None:
-        return "Thread level 3 must have init content."
-    return None
 
 
 @router.post("/{thread_id}/post", response_model=int)
@@ -69,18 +57,17 @@ def create_post(session: SessionDep, thread_id: int, post: PostCreate, current_u
 
 @router.post("/", response_model=ThreadWithPosts)
 def create_thread(session: SessionDep, thread: ThreadCreate, current_user: CurrentUser):
-    
-    parent_thread = get_parent_thread(session, thread.parent_id) if thread.parent_id is not None else None  
-
-    error_message = can_create_thread(current_user, thread, parent_thread)
-    if error_message is not None:
-        raise HTTPException(status_code=403, detail=error_message)
+    category = session.exec(select(Category).where(Category.id == thread.category_id)).first()
+    if category is None:
+        raise HTTPException(status_code=404, detail="Category not found")   
+    if category.level != 2:
+        raise HTTPException(status_code=400, detail="Only create thread in second level category")
     
     db_thread = Thread(**thread.model_dump(), user_id=current_user.id, children_count=1)
     session.add(db_thread)  
     session.commit()
 
-    update_q = update(Thread).where(Thread.id == thread.parent_id).values(children_count=Thread.children_count + 1)
+    update_q = update(Thread).where(Thread.id == thread.category_id).values(children_count=Thread.children_count + 1)
     session.exec(update_q)
     session.commit()
 
@@ -93,56 +80,51 @@ def create_thread(session: SessionDep, thread: ThreadCreate, current_user: Curre
         children = [first_post]
     else:
         children = []
+    
     return ThreadWithPosts(
         id=db_thread.id,
         title=db_thread.title,
         level=db_thread.level,
         user_id=db_thread.user_id,
-        parent_id=db_thread.parent_id,
+        category_id=db_thread.category_id,
         posts=children,
     )
 
-# Get root thread with level = 0, has only one root thread  
-@router.get("/root", response_model=ThreadResponse)
-def get_root_thread(session: SessionDep):
-    db_thread = session.exec(select(Thread).where(Thread.level == 0)).first()
-    return db_thread
-
 # TODO: Cache this response later once we set up Redis.
-@router.get("/homepage", response_model=ThreadWithChildren)
+@router.get("/homepage", response_model=CategoryWithChildren)
 def get_homepage(session: SessionDep):
-    parent = session.exec(select(Thread).where(Thread.level == 0)).first()
+    parent = session.exec(select(Category).where(Category.level == 0)).first()
     if parent is None:
-        raise HTTPException(status_code=404, detail="Thread not found")
-    frist_level_threads = session.exec(select(Thread).where(Thread.parent_id == parent.id)).all()
-    second_level_threads = []
-    first_level_thread_ids = [thread.id for thread in frist_level_threads]
-    second_level_threads = session.exec(select(Thread).where(Thread.parent_id.in_(first_level_thread_ids))).all()
+        raise HTTPException(status_code=404, detail="Category not found")
+    frist_level_category = session.exec(select(Category).where(Category.parent_id == parent.id)).all()
+    second_level_category = []
+    first_level_category_ids = [category.id for category in frist_level_category]
+    second_level_category = session.exec(select(Category).where(Category.parent_id.in_(first_level_category_ids))).all()
 
-    second_level_thread_mapping = {}
+    second_level_category_mapping = {}
 
-    for second_level_thread in second_level_threads:
-        if second_level_thread.parent_id not in second_level_thread_mapping:
-            second_level_thread_mapping[second_level_thread.parent_id] = []
-        second_level_thread_mapping[second_level_thread.parent_id].append(second_level_thread)
+    for second_level_category in second_level_category:
+        if second_level_category.parent_id not in second_level_category_mapping:
+            second_level_category_mapping[second_level_category.parent_id] = []
+        second_level_category_mapping[second_level_category.parent_id].append(second_level_category)
 
-    first_level_thread_respone = [ThreadWithChildren(
-        id=thread.id,
-        title=thread.title,
-        level=thread.level,
-        user_id=thread.user_id,
-        parent_id=thread.parent_id,
-        children=second_level_thread_mapping[thread.id]
-    ) for thread in frist_level_threads]
+    first_level_category_respone = [CategoryWithChildren(
+        id=category.id,
+        title=category.title,
+        level=category.level,
+        user_id=category.user_id,
+        parent_id=category.parent_id,
+        children=second_level_category_mapping[category.id]
+    ) for category in frist_level_category]
 
-    return ThreadWithChildren(
+    return CategoryWithChildren(
         id=parent.id,
         title=parent.title,
         level=parent.level,
         user_id=parent.user_id,
         parent_id=parent.parent_id,
         children_count=parent.children_count,
-        children=first_level_thread_respone
+        children=first_level_category_respone
     )
 
 
@@ -178,18 +160,20 @@ class PaginatedThread(SQLModel):
 
 
 @router.get("/{thread_id}/get_third_level_thread", response_model=PaginatedThread)
-def get_third_level_thread(session: SessionDep, parent_thread_id: int, limit: int = 10, offset: int = 0):
-    parent_thread = session.exec(select(Thread).where(Thread.id == parent_thread_id)).first()   
-    if parent_thread is None:
+def get_thread_by_category(session: SessionDep, category_id: int, limit: int = 10, offset: int = 0):
+    category = session.exec(select(Category).where(Category.id == category_id)).first()   
+    if category is None:
         raise HTTPException(status_code=404, detail="Parent thread not found")
-    if parent_thread.level != 2:
-        raise HTTPException(status_code=403, detail="Parent thread is not a second level thread")
-    threads = session.exec(select(Thread).where(Thread.parent_id == parent_thread.id).order_by(Thread.updated_at.desc()).offset(offset).limit(limit)).all()
+    if category.level != 2:
+        raise HTTPException(status_code=403, detail="Category is not a third level category")
+    threads = session.exec(select(Thread).where(Thread.category_id == category.id).order_by(Thread.updated_at.desc()).offset(offset).limit(limit)).all()
     return PaginatedThread(threads=threads, total=len(threads))
 
 @router.get("/{thread_id}", response_model=ThreadResponse)
 def get_thread(session: SessionDep, thread_id: int):
     db_thread = session.exec(select(Thread).where(Thread.id == thread_id)).first()
+    if db_thread is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
     return db_thread
 
 @router.get("/{thread_id}/posts", response_model=List[PostResponse])
@@ -197,8 +181,6 @@ def get_posts(session: SessionDep, thread_id: int, limit: int = 10, offset: int 
     thread = session.exec(select(Thread).where(Thread.id == thread_id)).first()
     if thread is None:
         raise HTTPException(status_code=404, detail="Thread not found") 
-    if thread.level != 3:
-        raise HTTPException(status_code=400, detail="Thread is not a third level thread")
     db_posts = session.exec(select(Post).where(Post.thread_id == thread_id).order_by(Post.id.asc()).offset(offset).limit(limit)).all()
     return db_posts 
 
@@ -206,5 +188,3 @@ def get_posts(session: SessionDep, thread_id: int, limit: int = 10, offset: int 
 def get_post_reactions(session: SessionDep, post_ids: List[int]):
     db_posts = session.exec(select(PostReaction).where(PostReaction.post_id.in_(post_ids))).all()
     return {post_id: db_posts for post_id in post_ids}
-
-

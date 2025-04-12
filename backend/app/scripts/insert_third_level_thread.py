@@ -6,6 +6,7 @@ from pathlib import Path
 from app.models.user import User
 from app.core.security import get_password_hash
 from app.models.thread import Thread
+from app.models.category import Category
 from app.models.post import Post
 from sqlmodel import Session, update, select
 from app.core.db import engine
@@ -34,9 +35,9 @@ def main():
     # read data from data_dir/<second_level_thread_name>/<third_level_thread_name>/data.json
     # Read line by line then parse to json
     # Insert into database
-    for second_level_id, second_level_thread_name in thread_mapping.items():
+    for category_id, category_name in thread_mapping.items():
         # Get the base directory
-        base_dir = data_dir / second_level_thread_name
+        base_dir = data_dir / category_name
         
         # Check if directory exists
         if not base_dir.exists():
@@ -91,7 +92,7 @@ def main():
                                 db_user_id = existing_user.id
                         thread = Thread(
                             title=third_level_thread_name,
-                            parent_id=second_level_id,
+                            category_id=category_id,
                             user_id=db_user_id,
                             level=3,
                             children_count=0,
@@ -100,8 +101,8 @@ def main():
                         db.commit()
                         db.refresh(thread)
 
-                        second_level_update_q = update(Thread).values(children_count=Thread.children_count + 1).where(Thread.id == second_level_id)
-                        db.exec(second_level_update_q)
+                        category_update_q = update(Category).values(children_count=Category.children_count + 1).where(Category.id == category_id)
+                        db.exec(category_update_q)
                         db.commit()
 
                         thread_id = thread.id   

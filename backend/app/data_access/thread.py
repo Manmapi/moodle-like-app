@@ -16,8 +16,8 @@ def get_thread(db: Session, thread_id: int) -> Thread | None:
 def get_thread_by_user(db: Session, user_id: int) -> list[Thread]:
     return db.exec(select(Thread).where(Thread.user_id == user_id)).all()
 
-def get_thread_by_parent(db: Session, parent_id: int) -> list[Thread]:
-    return db.exec(select(Thread).where(Thread.parent_id == parent_id)).all()
+def get_thread_by_category(db: Session, category_id: int) -> list[Thread]:
+    return db.exec(select(Thread).where(Thread.category_id == category_id)).all()
 
 def get_thread_by_level(db: Session, level: int) -> list[Thread]:
     return db.exec(select(Thread).where(Thread.level == level)).all()

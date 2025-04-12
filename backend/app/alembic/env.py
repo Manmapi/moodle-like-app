@@ -20,6 +20,7 @@ fileConfig(config.config_file_name)
 from app.models.user import SQLModel  # noqa
 from app.models.thread import SQLModel as ThreadSQLModel  # noqa
 from app.models.post import SQLModel as PostSQLModel  # noqa
+from app.models.category import SQLModel as CategorySQLModel  # noqa
 from app.core.config import settings # noqa
 
 target_metadata = SQLModel.metadata
