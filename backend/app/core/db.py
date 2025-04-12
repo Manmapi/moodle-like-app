@@ -25,7 +25,7 @@ def init_db(session: Session) -> None:
         select(User).where(User.email == settings.FIRST_SUPERUSER)
     ).first()
     if admin_user is None:
-        admin_user = User(email=settings.FIRST_SUPERUSER, hashed_password=get_password_hash(settings.FIRST_SUPERUSER_PASSWORD), user_name="Admin")
+        admin_user = User(email=settings.FIRST_SUPERUSER, hashed_password=get_password_hash(settings.FIRST_SUPERUSER_PASSWORD), user_name="Admin", level=0)
         session.add(admin_user)
         session.commit()
     # Create root thread if not exists
