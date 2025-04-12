@@ -29,6 +29,12 @@ def get_tags(session: SessionDep):
 def add_thread_to_tag(tag_id: int, thread_id: int, session: SessionDep, current_user: CurrentUser):
     if current_user.level != 0:
         raise HTTPException(status_code=403, detail="Only admin can add thread to tag")
+    
+    thread = session.exec(select(Thread).where(Thread.id == thread_id)).first()
+    
+    if thread is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    
     thread_tag = ThreadTag(tag_id=tag_id, thread_id=thread_id)
     session.add(thread_tag)
     session.commit()
