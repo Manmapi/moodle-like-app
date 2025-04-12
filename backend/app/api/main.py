@@ -7,7 +7,6 @@ api_router = APIRouter()
 api_router.include_router(login.router)
 api_router.include_router(users.router)
 api_router.include_router(utils.router)
-api_router.include_router(neo4j_test.router)
 api_router.include_router(thread.router)
 api_router.include_router(tag.router)
 

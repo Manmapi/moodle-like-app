@@ -5,10 +5,11 @@ from app.models.post import Post, PostCreate, PostResponse, PostReaction
 from sqlmodel import SQLModel, Field, select, update        
 from app.models.thread import ThreadCreate, Thread
 from app.data_access.thread import get_parent_thread
-
+from app.data_access import neo4j
+from collections import defaultdict 
 from datetime import datetime
+from app.api.deps import Neo4jSessionDep
 router = APIRouter(prefix="/thread", tags=["thread"])
-
 
 
 class ThreadWithPosts(SQLModel):
@@ -34,6 +35,7 @@ class ThreadResponse(SQLModel):
     user_id: int
     parent_id: int | None   
     children_count: int
+    updated_at: datetime
 
 def can_create_thread(current_user: CurrentUser, thread: ThreadCreate, parent_thread: Thread | None) -> Optional[str]:
     if current_user.level > 0 and thread.parent_id is None:
@@ -143,6 +145,33 @@ def get_homepage(session: SessionDep):
         children=first_level_thread_respone
     )
 
+
+@router.get("/similar_threads", response_model=List[ThreadResponse])
+def get_similar_threads(session: SessionDep, thread_id: int, neo4j_session: Neo4jSessionDep):
+    db_thread = session.exec(select(Thread).where(Thread.id == thread_id)).first()
+    if db_thread is None:
+        raise HTTPException(status_code=404, detail="Thread not found")
+    # List[thread_id, related_tags: int]
+    similar_threads = neo4j.get_similar_threads(neo4j_session, db_thread.id, limit=5)
+    scores_mapping = defaultdict(list)
+    scores = [] 
+    for similar_thread in similar_threads:
+        thread_id = similar_thread["threadId"]
+        related_tags = similar_thread["sharedTags"]
+        scores_mapping[related_tags].append(thread_id)
+        scores.append(related_tags)
+    scores.sort(reverse=True)   
+    # We query based on related_tags descending order until we get 5. Also query based on updated_at descending order.
+    result = []
+    for score in scores:
+        thread_ids = scores_mapping[score]
+        query = select(Thread).where(Thread.id.in_(thread_ids)).order_by(Thread.updated_at.desc())
+        similar_threads = session.exec(query).all() 
+        result.extend(similar_threads)
+        if len(result) >= 5:
+            break
+    return result[:5]
+
 class PaginatedThread(SQLModel):
     threads: List[ThreadResponse]
     total: int
@@ -179,4 +208,3 @@ def get_post_reactions(session: SessionDep, post_ids: List[int]):
     return {post_id: db_posts for post_id in post_ids}
 
 
-    
