@@ -104,6 +104,18 @@ services:
     command: redis-server --save 60 1 --loglevel warning --requirepass ${REDIS_PASSWORD:-redispassword} --protected-mode no --bind 0.0.0.0
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD:-redispassword}
+  # Add Flower service override to expose port locally
+  flower:
+    ports:
+      - "5555:5555"  # Expose Flower port to host
+    restart: "no"    # Don't restart automatically in development
+    networks:
+      - backend-network
+      - default
+      - traefik-public
+    environment:
+      - FLOWER_BASIC_AUTH=${FLOWER_BASIC_AUTH:-}  # Optional: add basic auth for local dev
+      - FLOWER_URL_PREFIX=${FLOWER_URL_PREFIX:-}  # Optional: URL prefix if needed
 
 networks:
   traefik-public:

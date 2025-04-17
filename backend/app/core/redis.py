@@ -167,6 +167,56 @@ class RedisConnection:
             logger.error(f"Error caching list with key '{key}': {e}")
             return False
 
+    # Add these methods to the RedisConnection class in redis.py
+
+    async def lpush(self, key: str, value: str) -> int:
+        """Push a value to the head of a Redis list."""
+        try:
+            client = self.get_client()
+            result = await client.lpush(key, value)
+            return result  # Returns the length of the list after the push
+        except Exception as e:
+            logger.error(f"Error pushing to Redis list '{key}': {e}")
+            return 0
+
+    async def llen(self, key: str) -> int:
+        """Get the length of a Redis list."""
+        try:
+            client = self.get_client()
+            result = await client.llen(key)
+            return result
+        except Exception as e:
+            logger.error(f"Error getting Redis list length for '{key}': {e}")
+            return 0
+
+    async def lrange(self, key: str, start: int, end: int) -> list:
+        """Get a range of values from a Redis list."""
+        try:
+            client = self.get_client()
+            result = await client.lrange(key, start, end)
+            return result
+        except Exception as e:
+            logger.error(f"Error getting Redis list range for '{key}': {e}")
+            return []
+
+    async def ltrim(self, key: str, start: int, end: int) -> bool:
+        """Trim a Redis list to the specified range."""
+        try:
+            client = self.get_client()
+            result = await client.ltrim(key, start, end)
+            return result
+        except Exception as e:
+            logger.error(f"Error trimming Redis list '{key}': {e}")
+            return False
+
+    async def pipeline(self):
+        """Get a Redis pipeline."""
+        try:
+            client = self.get_client()
+            return client.pipeline()
+        except Exception as e:
+            logger.error(f"Error creating Redis pipeline: {e}")
+            raise
 # --- Singleton Instance --- 
 redis_conn = RedisConnection()
 

@@ -5,13 +5,15 @@ from app.models.post import Post, PostCreate, PostResponse, PostReaction
 from sqlmodel import SQLModel, Field, select, update        
 from app.models.thread import ThreadCreate, Thread, ThreadView
 from app.models.category import Category
-from app.data_access.thread import get_parent_thread
 from app.data_access import neo4j
 from collections import defaultdict 
 from datetime import datetime
 from app.api.deps import Neo4jSessionDep
 from app.core.redis import redis_conn
+from app.tasks.thread import record_thread_view
+from app.worker import example_task
 
+from sqlalchemy import text
 router = APIRouter(prefix="/thread", tags=["thread"])
 
 # Constants for caching
@@ -171,6 +173,32 @@ def get_similar_threads(session: SessionDep, thread_id: int, neo4j_session: Neo4
             break
     return result[:5]
 
+
+@router.get("/trending", response_model=List[ThreadResponse])
+def get_trending_threads(session: SessionDep):
+    """Get the top 10 trending threads based on view counts"""
+    # First, get thread IDs from the materialized view in order of trending score
+    trend_query = "SELECT id, trending_score FROM trending_threads ORDER BY trending_score DESC"
+    thread_ids = [row[0] for row in session.exec(text(trend_query)).all()]
+    trending_score_mapping = {row[0]: row[1] for row in session.exec(text(trend_query)).all()}
+    print(trending_score_mapping)
+    if not thread_ids:
+        return []
+
+    # Then fetch the full Thread objects using those IDs
+    # The order_by clause preserves the order from the materialized view
+    threads_query = select(Thread).where(Thread.id.in_(thread_ids))
+    threads = session.exec(threads_query).all()
+
+    # Sort the threads to match the order from the trending view
+    # Create a mapping of id -> position in the trending list
+    id_to_position = {id: idx for idx, id in enumerate(thread_ids)}
+
+    # Sort threads based on their position in the trending list
+    sorted_threads = sorted(threads, key=lambda t: id_to_position.get(t.id, 999))
+
+    return sorted_threads
+
 class PaginatedThread(SQLModel):
     threads: List[ThreadResponse]
     total: int
@@ -207,11 +235,11 @@ def get_post_reactions(session: SessionDep, post_ids: List[int]):
     return {post_id: db_posts for post_id in post_ids}
 
 
-# Insert record to ThreadView table
-@router.post("/{thread_id}/view", response_model=int)
-def insert_thread_view(session: SessionDep, thread_id: int):
-    db_thread_view = ThreadView(thread_id=thread_id)
-    session.add(db_thread_view)
-    session.commit()
-    session.refresh(db_thread_view)
-    return db_thread_view.id 
+@router.post("/{thread_id}/view")
+def insert_thread_view(thread_id: int):
+    # Send the view event to Celery task queue
+    example_task.delay("thread_id")
+    task = record_thread_view.delay(thread_id)
+    return task.id
+
+
